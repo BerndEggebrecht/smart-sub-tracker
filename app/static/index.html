@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Sub-Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 font-sans min-h-screen p-6">
+    <div class="max-w-7xl mx-auto space-y-6">
+        
+        <!-- Header -->
+        <header class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-lg">
+            <div>
+                <h1 class="text-2xl font-bold flex items-center gap-2">💳 Smart Sub-Tracker</h1>
+                <p class="text-sm text-slate-400">Ausgaben-Dashboard & 30-Tage-Prognose</p>
+            </div>
+            <div class="text-center bg-slate-900/50 py-2 px-4 rounded-lg border border-slate-700/50">
+                <span id="currentDate" class="text-xs text-slate-400 block uppercase tracking-wider">--.--.----</span>
+                <span id="currentTime" class="text-xl font-mono font-bold text-slate-200 tracking-widest tabular-nums inline-block min-w-[120px]">--:--:--</span>
+            </div>
+            <div class="text-right">
+                <span class="text-xs text-slate-400 block">Monatsprognose</span>
+                <span id="monthlyTotal" class="text-3xl font-extrabold text-emerald-400">0.00 €</span>
+            </div>
+        </header>
+
+        <!-- Hauptbereich -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            
+            <!-- Spalte 1: Timeline -->
+            <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-lg flex flex-col">
+                <h2 class="text-lg font-semibold mb-4 text-amber-400">⏳ Fällig in 30 Tagen</h2>
+                <ul id="upcomingList" class="space-y-3 overflow-y-auto max-h-72 pr-2">
+                    <p class="text-slate-400 text-sm italic">Lade Daten...</p>
+                </ul>
+            </div>
+
+            <!-- Spalte 2: Chart -->
+            <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-lg flex flex-col items-center">
+                <h2 class="text-lg font-semibold mb-4 text-blue-400">📊 Kosten nach Kategorie</h2>
+                <div class="w-full max-w-xs relative flex-grow flex items-center justify-center">
+                    <canvas id="costChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Spalte 3: Kategorien -->
+            <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-lg flex flex-col">
+                <h2 class="text-lg font-semibold mb-4 text-purple-400">🏷️ Kategorien verwalten</h2>
+                <form id="catForm" onsubmit="createCategory(event)" class="space-y-3 mb-4">
+                    <div class="flex gap-2">
+                        <input type="text" id="catName" placeholder="Neue Kategorie..." required class="flex-grow bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm focus:border-purple-500 focus:outline-none">
+                        <input type="color" id="catColor" value="#3b82f6" class="w-10 h-9 bg-slate-900 border border-slate-700 rounded-lg cursor-pointer p-1">
+                    </div>
+                    <button type="submit" class="w-full bg-purple-600 hover:bg-purple-500 py-2 rounded-lg text-sm font-medium transition shadow-md">Kategorie anlegen</button>
+                </form>
+                <div class="overflow-y-auto max-h-44 pr-1 space-y-2" id="categoryList"></div>
+            </div>
+        </div>
+
+        <!-- Abos verwalten & Hinzufügen -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-lg md:col-span-2 flex flex-col">
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-3">
+                    <h2 class="text-lg font-semibold text-slate-200">📋 Alle aktiven Abonnements</h2>
+                    
+                    <div class="flex gap-2 w-full md:w-auto">
+                        <input type="text" id="searchInput" oninput="renderTable()" placeholder="Suchen..." class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs focus:border-blue-500 focus:outline-none flex-grow md:w-44">
+                        <select id="filterCategory" onchange="renderTable()" class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs focus:border-blue-500 focus:outline-none text-slate-300">
+                            <option value="">Alle Kategorien</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto flex-grow">
+                    <table class="w-full text-left text-sm">
+                        <thead class="border-b border-slate-700 text-slate-400">
+                            <tr>
+                                <th class="pb-3">Status</th>
+                                <th class="pb-3">Name</th>
+                                <th class="pb-3">Betrag</th>
+                                <th class="pb-3">Art</th>
+                                <th class="pb-3">Nächste Fälligkeit</th>
+                                <th class="pb-3 text-right">Aktion</th>
+                            </tr>
+                        </thead>
+                        <tbody id="subTableBody" class="divide-y divide-slate-700/50">
+                            <tr><td colspan="6" class="py-4 text-center text-slate-400">Lade Abonnements...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Abo Formular -->
+            <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-lg">
+                <h2 id="formTitle" class="text-lg font-semibold mb-4 text-emerald-400">➕ Neues Abo erfassen</h2>
+                <form id="subForm" onsubmit="handleSubSubmit(event)" class="space-y-3">
+                    <input type="hidden" id="subId">
+                    <div>
+                        <label class="text-xs text-slate-400 block mb-1">Name</label>
+                        <input type="text" id="name" required class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm focus:border-emerald-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="text-xs text-slate-400 block mb-1">Betrag (€)</label>
+                        <input type="number" step="0.01" id="amount" required class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm focus:border-emerald-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="text-xs text-slate-400 block mb-1">Intervall</label>
+                        <select id="interval_type" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm focus:border-emerald-500 focus:outline-none">
+                            <option value="monthly">Monatlich</option>
+                            <option value="yearly">Jährlich</option>
+                            <option value="weekly">Wöchentlich</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-xs text-slate-400 block mb-1">Zahlungsart</label>
+                        <select id="payment_type" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm focus:border-emerald-500 focus:outline-none">
+                            <option value="Überweisung">Überweisung</option>
+                            <option value="Dauerauftrag">Dauerauftrag</option>
+                            <option value="Einzugsermächtigung">Einzugsermächtigung</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-xs text-slate-400 block mb-1">Kategorie</label>
+                        <select id="category_id" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm focus:border-emerald-500 focus:outline-none"></select>
+                    </div>
+                    <div>
+                        <label class="text-xs text-slate-400 block mb-1">Fälligkeit (Stichtag)</label>
+                        <input type="date" id="next_due_date" required class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm focus:border-emerald-500 focus:outline-none">
+                    </div>
+                    <div class="flex gap-2">
+                        <button type="submit" id="submitBtn" class="flex-grow bg-emerald-600 hover:bg-emerald-500 py-2 rounded-lg text-sm font-medium transition shadow-md">Speichern</button>
+                        <button type="button" id="cancelBtn" onclick="resetForm()" class="hidden bg-slate-700 hover:bg-slate-600 px-3 py-2 rounded-lg text-sm font-medium transition">Abbrechen</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Export & E-Mail Test Sektion -->
+        <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-lg flex flex-col md:flex-row justify-between items-center gap-4">
+            <div>
+                <h3 class="font-semibold text-base">📤 Export- & Benachrichtigungs-Assistent</h3>
+                <p class="text-xs text-slate-400">Exportiere deine Berichte oder teste den E-Mail-Versand manuell.</p>
+            </div>
+            <div class="flex flex-wrap gap-3">
+                <a href="/api/export/csv" class="bg-emerald-600 hover:bg-emerald-500 px-4 py-2 rounded-lg text-sm font-medium transition shadow-md flex items-center gap-2">📊 CSV</a>
+                <a href="/api/export/pdf" class="bg-rose-600 hover:bg-rose-500 px-4 py-2 rounded-lg text-sm font-medium transition shadow-md flex items-center gap-2">📄 PDF</a>
+                <button onclick="downloadMarkdown()" class="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-sm font-medium transition shadow-md flex items-center gap-2">📝 Markdown</button>
+                <button onclick="sendTestEmail()" class="bg-purple-600 hover:bg-purple-500 px-4 py-2 rounded-lg text-sm font-medium transition shadow-md flex items-center gap-2">📧 Test-E-Mail senden</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let costChartInstance = null;
+        let allSubscriptions = [];
+        let allCategories = [];
+
+        function updateClock() {
+            const now = new Date();
+            const optionsDate = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+            document.getElementById('currentDate').innerText = now.toLocaleDateString('de-DE', optionsDate);
+            
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            document.getElementById('currentTime').innerText = `${hours}:${minutes}:${seconds}`;
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        async function loadDashboard() {
+            try {
+                const res = await fetch('/api/dashboard');
+                const data = await res.json();
+                allSubscriptions = data.subscriptions;
+                allCategories = data.categories;
+                
+                document.getElementById('monthlyTotal').innerText = data.projected_monthly_total.toFixed(2) + ' €';
+                
+                const catSelect = document.getElementById('category_id');
+                const currentSelectedCat = catSelect.value;
+                catSelect.innerHTML = '';
+                allCategories.forEach(cat => {
+                    catSelect.innerHTML += `<option value="${cat.id}">${cat.name}</option>`;
+                });
+                if(currentSelectedCat) catSelect.value = currentSelectedCat;
+
+                const filterSelect = document.getElementById('filterCategory');
+                const currentFilter = filterSelect.value;
+                filterSelect.innerHTML = '<option value="">Alle Kategorien</option>';
+                allCategories.forEach(cat => {
+                    filterSelect.innerHTML += `<option value="${cat.id}">${cat.name}</option>`;
+                });
+                if(currentFilter) filterSelect.value = currentFilter;
+
+                const catList = document.getElementById('categoryList');
+                catList.innerHTML = '';
+                allCategories.forEach(cat => {
+                    catList.innerHTML += `
+                        <div class="flex justify-between items-center bg-slate-900/50 p-2 rounded-lg border border-slate-700/50 text-xs">
+                            <div class="flex items-center gap-2">
+                                <span class="w-3 h-3 rounded-full inline-block" style="background-color: ${cat.color};"></span>
+                                <span class="font-medium">${cat.name}</span>
+                            </div>
+                            <button onclick="deleteCategory(${cat.id})" class="text-rose-400 hover:text-rose-300 px-2 py-1 transition">Löschen</button>
+                        </div>
+                    `;
+                });
+
+                const list = document.getElementById('upcomingList');
+                list.innerHTML = data.upcoming_costs.length ? '' : '<p class="text-slate-400 text-sm italic">Keine Zahlungen in den nächsten 30 Tagen.</p>';
+                
+                data.upcoming_costs.forEach(item => {
+                    list.innerHTML += `
+                        <li class="flex justify-between items-center bg-slate-900/60 p-3 rounded-lg border border-slate-700/50">
+                            <div>
+                                <span class="font-medium block text-sm">${item.name}</span>
+                                <span class="text-xs text-slate-400">${item.category} • Fällig: ${item.due_date}</span>
+                            </div>
+                            <span class="font-bold text-rose-400 text-sm">-${item.amount.toFixed(2)} €</span>
+                        </li>
+                    `;
+                });
+
+                renderTable();
+
+                const labels = Object.keys(data.category_distribution);
+                const values = Object.values(data.category_distribution);
+                const colors = labels.map(label => {
+                    const found = allCategories.find(c => c.name === label);
+                    return found ? found.color : '#3b82f6';
+                });
+
+                const ctx = document.getElementById('costChart').getContext('2d');
+                if (costChartInstance) costChartInstance.destroy();
+                
+                costChartInstance = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: labels,
+                        datasets: [{ data: values, backgroundColor: colors }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: { legend: { position: 'bottom', labels: { color: '#cbd5e1', boxWidth: 12 } } }
+                    }
+                });
+            } catch (err) {
+                console.error("Fehler beim Laden des Dashboards:", err);
+            }
+        }
+
+        function renderTable() {
+            const searchText = document.getElementById('searchInput').value.toLowerCase();
+            const selectedCatId = document.getElementById('filterCategory').value;
+            const tbody = document.getElementById('subTableBody');
+            
+            tbody.innerHTML = '';
+
+            const filtered = allSubscriptions.filter(sub => {
+                const matchesSearch = sub.name.toLowerCase().includes(searchText);
+                const matchesCat = selectedCatId === "" || sub.category_id == selectedCatId;
+                return matchesSearch && matchesCat;
+            });
+
+            if(filtered.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="py-4 text-center text-slate-400">Keine passenden Abonnements gefunden.</td></tr>`;
+                return;
+            }
+
+            const todayStr = new Date().toISOString().slice(0, 10);
+
+            filtered.forEach(sub => {
+                let ampelColor = 'bg-emerald-500';
+                let ampelTitle = 'Bezahlt / Im Zeitplan';
+                
+                if (sub.next_due_date < todayStr) {
+                    ampelColor = 'bg-rose-500 animate-pulse';
+                    ampelTitle = 'Überfällig!';
+                } else {
+                    const due = new Date(sub.next_due_date);
+                    const now = new Date(todayStr);
+                    const diffDays = Math.ceil((due - now) / (1000 * 60 * 60 * 24));
+                    if (diffDays <= 3) {
+                        ampelColor = 'bg-amber-400';
+                        ampelTitle = 'Bald fällig!';
+                    }
+                }
+
+                tbody.innerHTML += `
+                    <tr class="border-b border-slate-700/30 hover:bg-slate-700/20 transition">
+                        <td class="py-3"><span class="inline-block w-3 h-3 rounded-full ${ampelColor}" title="${ampelTitle}"></span></td>
+                        <td class="py-3 font-medium">
+                            ${sub.name}
+                            <span class="block text-xs text-slate-400">${sub.category_name || ''}</span>
+                        </td>
+                        <td class="py-3">${sub.amount.toFixed(2)} €</td>
+                        <td class="py-3 text-xs text-slate-400">${sub.payment_type || 'Überweisung'}</td>
+                        <td class="py-3 text-slate-300">${sub.next_due_date}</td>
+                        <td class="py-3 text-right space-x-1">
+                            <button onclick="editSub(${sub.id})" class="bg-slate-700 hover:bg-blue-600 text-xs px-2.5 py-1 rounded transition" title="Bearbeiten">✏️</button>
+                            <button onclick="markPaid(${sub.id})" class="bg-slate-700 hover:bg-emerald-600 text-xs px-3 py-1 rounded transition">Bezahlt</button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        async function sendTestEmail() {
+            try {
+                const res = await fetch('/api/test-email');
+                const data = await res.json();
+                if(res.ok) {
+                    alert("✅ " + data.message);
+                } else {
+                    alert("❌ Fehler: " + (data.detail || "Unbekannter Fehler"));
+                }
+            } catch (err) {
+                alert("❌ Verbindung zum Server fehlgeschlagen.");
+            }
+        }
+
+        async function createCategory(event) {
+            event.preventDefault();
+            const payload = {
+                name: document.getElementById('catName').value,
+                color: document.getElementById('catColor').value
+            };
+            const res = await fetch('/api/categories', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            });
+            if(res.ok) {
+                document.getElementById('catName').value = '';
+                loadDashboard();
+            } else {
+                const err = await res.json();
+                alert(err.detail || "Fehler beim Erstellen");
+            }
+        }
+
+        async function deleteCategory(id) {
+            if(!confirm("Kategorie wirklich löschen?")) return;
+            const res = await fetch(`/api/categories/${id}`, { method: 'DELETE' });
+            if(res.ok) {
+                loadDashboard();
+            } else {
+                const err = await res.json();
+                alert(err.detail || "Kategorie konnte nicht gelöscht werden.");
+            }
+        }
+
+        function editSub(id) {
+            const sub = allSubscriptions.find(s => s.id === id);
+            if(!sub) return;
+
+            document.getElementById('subId').value = sub.id;
+            document.getElementById('name').value = sub.name;
+            document.getElementById('amount').value = sub.amount;
+            document.getElementById('interval_type').value = sub.interval_type;
+            document.getElementById('payment_type').value = sub.payment_type || 'Überweisung';
+            document.getElementById('category_id').value = sub.category_id;
+            document.getElementById('next_due_date').value = sub.next_due_date;
+
+            document.getElementById('formTitle').innerText = "✏️ Abo bearbeiten";
+            document.getElementById('submitBtn').innerText = "Änderungen speichern";
+            document.getElementById('submitBtn').className = "flex-grow bg-blue-600 hover:bg-blue-500 py-2 rounded-lg text-sm font-medium transition shadow-md";
+            document.getElementById('cancelBtn').classList.remove('hidden');
+            
+            document.getElementById('subForm').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function resetForm() {
+            document.getElementById('subForm').reset();
+            document.getElementById('subId').value = '';
+            document.getElementById('formTitle').innerText = "➕ Neues Abo erfassen";
+            document.getElementById('submitBtn').innerText = "Speichern";
+            document.getElementById('submitBtn').className = "flex-grow bg-emerald-600 hover:bg-emerald-500 py-2 rounded-lg text-sm font-medium transition shadow-md";
+            document.getElementById('cancelBtn').classList.add('hidden');
+            document.getElementById('next_due_date').value = new Date().toISOString().slice(0,10);
+        }
+
+        async function handleSubSubmit(event) {
+            event.preventDefault();
+            const subId = document.getElementById('subId').value;
+            
+            const payload = {
+                name: document.getElementById('name').value,
+                amount: parseFloat(document.getElementById('amount').value),
+                interval_type: document.getElementById('interval_type').value,
+                payment_type: document.getElementById('payment_type').value,
+                category_id: parseInt(document.getElementById('category_id').value),
+                start_date: document.getElementById('next_due_date').value,
+                next_due_date: document.getElementById('next_due_date').value
+            };
+
+            let url = '/api/subscriptions';
+            let method = 'POST';
+
+            if(subId) {
+                url = `/api/subscriptions/${subId}`;
+                method = 'PUT';
+            }
+
+            const res = await fetch(url, {
+                method: method,
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            });
+
+            if(res.ok) {
+                resetForm();
+                loadDashboard();
+            } else {
+                alert("Fehler beim Speichern des Abos.");
+            }
+        }
+
+        async function markPaid(id) {
+            const res = await fetch(`/api/pay/${id}`, { method: 'POST' });
+            if(res.ok) {
+                loadDashboard();
+            }
+        }
+
+        async function downloadMarkdown() {
+            const res = await fetch('/api/report/markdown');
+            const data = await res.json();
+            const blob = new Blob([data.markdown], { type: 'text/markdown' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `abo-report-${new Date().toISOString().slice(0,7)}.md`;
+            a.click();
+        }
+
+        resetForm();
+        loadDashboard();
+    </script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+# Python / venv
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Lokale Daten & Konfiguration
+data/
+.env
+downloads/
